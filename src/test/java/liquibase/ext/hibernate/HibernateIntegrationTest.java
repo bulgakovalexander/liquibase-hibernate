@@ -27,7 +27,11 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
+import org.springframework.mock.jndi.SimpleNamingContextBuilder;
 
+import javax.naming.Context;
+import javax.naming.NamingException;
+import javax.naming.spi.NamingManager;
 import java.io.*;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -40,14 +44,24 @@ import static junit.framework.TestCase.assertTrue;
 public class HibernateIntegrationTest {
     private final static Logger log = LogFactory.getLogger();
     private static final String HIBERNATE_CONFIG_FILE = "com/example/pojo/Hibernate.cfg.xml";
+
+    static {
+        try {
+            NamingManager.setInitialContextFactoryBuilder(new SimpleNamingContextBuilder());
+        } catch (NamingException e) {
+            throw new RuntimeException(e);
+        }
+
+    }
     private Database database;
     private Connection connection;
     private CompareControl compareControl;
+    private String url = "jdbc:hsqldb:mem:TESTDB" + System.currentTimeMillis();
 
     @Before
     public void setUp() throws Exception {
         Class.forName("org.hsqldb.jdbc.JDBCDriver");
-        connection = DriverManager.getConnection("jdbc:hsqldb:mem:TESTDB" + System.currentTimeMillis(), "SA", "");
+        connection = DriverManager.getConnection(url, "SA", "");
         database = new HsqlDatabase();
         database.setConnection(new JdbcConnection(connection));
 
@@ -137,14 +151,12 @@ public class HibernateIntegrationTest {
      */
     @Test
     public void hibernateSchemaExport() throws Exception {
-
         SingleConnectionDataSource ds = new SingleConnectionDataSource(connection, true);
 
         Configuration cfg = new Configuration();
         cfg.configure(HIBERNATE_CONFIG_FILE);
-        Properties properties = new Properties();
-        properties.put(Environment.DATASOURCE, ds);
-        cfg.addProperties(properties);
+
+        initDS(ds, cfg);
 
         SchemaExport export = new SchemaExport(cfg);
         export.execute(true, true, false, false);
@@ -166,6 +178,11 @@ public class HibernateIntegrationTest {
         assertEquals(differences, 0, diffResult.getUnexpectedObjects().size());
 //        assertEquals(differences, 0, diffResult.getChangedObjects().size()); //unimportant differences in schema name and datatypes causing test to fail
 
+    }
+
+    public static void initDS(SingleConnectionDataSource ds, Configuration cfg) throws NamingException {
+        Context ctx = NamingManager.getInitialContext(new Hashtable<Object, Object>());
+        ctx.bind(cfg.getProperty(Environment.DATASOURCE), ds);
     }
 
     /**
@@ -217,7 +234,7 @@ public class HibernateIntegrationTest {
         update.execute(true, true);
 
         diffResult = liquibase.diff(database, database2, compareControl);
-        
+
         ignoreDatabaseChangeLogTable(diffResult);
         ignoreConversionFromFloatToDouble64(diffResult);
 
@@ -258,7 +275,7 @@ public class HibernateIntegrationTest {
                 diffResult.getUnexpectedObjects().remove(table);
         }
         Set<Table> missingTables = diffResult.getMissingObjects(Table.class);
-        for (Iterator<Table> iterator = missingTables.iterator(); iterator.hasNext();) {
+        for (Iterator<Table> iterator = missingTables.iterator(); iterator.hasNext(); ) {
             Table table = iterator.next();
             if ("DATABASECHANGELOGLOCK".equalsIgnoreCase(table.getName()) || "DATABASECHANGELOG".equalsIgnoreCase(table.getName()))
                 diffResult.getMissingObjects().remove(table);
@@ -270,7 +287,7 @@ public class HibernateIntegrationTest {
                 diffResult.getUnexpectedObjects().remove(column);
         }
         Set<Column> missingColumns = diffResult.getMissingObjects(Column.class);
-        for (Iterator<Column> iterator = missingColumns.iterator(); iterator.hasNext();) {
+        for (Iterator<Column> iterator = missingColumns.iterator(); iterator.hasNext(); ) {
             Column column = iterator.next();
             if ("DATABASECHANGELOGLOCK".equalsIgnoreCase(column.getRelation().getName()) || "DATABASECHANGELOG".equalsIgnoreCase(column.getRelation().getName()))
                 diffResult.getMissingObjects().remove(column);
@@ -282,7 +299,7 @@ public class HibernateIntegrationTest {
                 diffResult.getUnexpectedObjects().remove(index);
         }
         Set<Index> missingIndexes = diffResult.getMissingObjects(Index.class);
-        for (Iterator<Index> iterator = missingIndexes.iterator(); iterator.hasNext();) {
+        for (Iterator<Index> iterator = missingIndexes.iterator(); iterator.hasNext(); ) {
             Index index = iterator.next();
             if ("DATABASECHANGELOGLOCK".equalsIgnoreCase(index.getTable().getName()) || "DATABASECHANGELOG".equalsIgnoreCase(index.getTable().getName()))
                 diffResult.getMissingObjects().remove(index);
@@ -294,7 +311,7 @@ public class HibernateIntegrationTest {
                 diffResult.getUnexpectedObjects().remove(primaryKey);
         }
         Set<PrimaryKey> missingPrimaryKeys = diffResult.getMissingObjects(PrimaryKey.class);
-        for (Iterator<PrimaryKey> iterator = missingPrimaryKeys.iterator(); iterator.hasNext();) {
+        for (Iterator<PrimaryKey> iterator = missingPrimaryKeys.iterator(); iterator.hasNext(); ) {
             PrimaryKey primaryKey = iterator.next();
             if ("DATABASECHANGELOGLOCK".equalsIgnoreCase(primaryKey.getTable().getName()) || "DATABASECHANGELOG".equalsIgnoreCase(primaryKey.getTable().getName()))
                 diffResult.getMissingObjects().remove(primaryKey);
